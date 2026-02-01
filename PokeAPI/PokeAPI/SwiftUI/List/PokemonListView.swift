@@ -28,34 +28,33 @@ struct PokemonListView: View {
             }
             .padding(.horizontal)
 
-            List(filteredPokemons) { pokemon in
-                HStack {
-                    Text(pokemon.name.capitalized)
-                    Spacer()
-                    Button(action: {
-                        Task {
-                            await viewModel.toggleFavorite(pokemon)
+            ScrollView {
+                let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(filteredPokemons) { pokemon in
+                        VStack(spacing: 8) {
+                            Text(pokemon.name.capitalized)
+                                .font(.caption)
+
+                            Button {
+                                Task { await viewModel.toggleFavorite(pokemon) }
+                            } label: {
+                                Image(systemName: viewModel.isFavorite(pokemon) ? "star.fill" : "star")
+                                    .foregroundColor(.yellow)
+                            }
                         }
-                    }) {
-                        Image(systemName: viewModel.isFavorite(pokemon) ? "star.fill" : "star")
-                            .foregroundColor(viewModel.isFavorite(pokemon) ? .yellow : .gray)
+                        .frame(maxWidth: .infinity, minHeight: 100)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .task {
+                            if !showFavoritesOnly {
+                                await viewModel.loadMoreIfNeeded(current: pokemon)
+                            }
+                        }
                     }
-                    .buttonStyle(BorderlessButtonStyle())
                 }
-                .task {
-                    if !showFavoritesOnly {
-                        await viewModel.loadMoreIfNeeded(current: pokemon)
-                    }
-                }
-            }
-            .listStyle(.plain)
-            .refreshable {
-                if !showFavoritesOnly {
-                    await viewModel.refresh()
-                } else {
-                    // ensure spinner is hidden
-                    viewModel.isLoading = false
-                }
+                .padding(8)
             }
         }
         .navigationTitle("Pokémon")

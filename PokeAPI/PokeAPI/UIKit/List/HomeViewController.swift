@@ -8,7 +8,23 @@ protocol HomeViewControllerProtocol: AnyObject {
 
 @MainActor
 final class HomeViewController: UIViewController {
-    private let tableView = UITableView()
+    private lazy var collectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        let spacing: CGFloat = 8
+        let itemWidth = (UIScreen.main.bounds.width - spacing * 4) / 3
+        layout.itemSize = CGSize(width: itemWidth, height: itemWidth + 32)
+        layout.minimumInteritemSpacing = spacing
+        layout.minimumLineSpacing = spacing
+
+        let cv = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        cv.translatesAutoresizingMaskIntoConstraints = false
+        cv.backgroundColor = .white
+        cv.delegate = self
+        cv.dataSource = self
+        cv.register(PokemonGridCell.self, forCellWithReuseIdentifier: "PokemonGridCell")
+        return cv
+    }()
+    
     private let segmentControl = UISegmentedControl(items: ["Todos", "Favoritos"])
     
     private lazy var refreshControl = UIRefreshControl()
@@ -53,21 +69,16 @@ final class HomeViewController: UIViewController {
         navigationItem.hidesSearchBarWhenScrolling = false
         definesPresentationContext = true
 
-        tableView.tableFooterView = footerSpinner
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.register(PokemonCell.self, forCellReuseIdentifier: "PokemonCell")
-        tableView.delegate = self
-        tableView.dataSource = self
-        tableView.refreshControl = refreshControl
+        collectionView.refreshControl = refreshControl
         refreshControl.addTarget(self, action: #selector(didPullToRefresh), for: .valueChanged)
-        view.addSubview(tableView)
+        view.addSubview(collectionView)
 
         // Constraints
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
     }
 
@@ -94,43 +105,42 @@ final class HomeViewController: UIViewController {
 @MainActor
 extension HomeViewController: HomeViewControllerProtocol {
     func reloadData() {
-        tableView.reloadData()
+        collectionView.reloadData()
         refreshControl.endRefreshing()
         footerSpinner.stopAnimating()
     }
 
     func showError(_ message: String) {
-        tableView.refreshControl?.endRefreshing()
+        collectionView.refreshControl?.endRefreshing()
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
         alert.addAction(.init(title: "Ok", style: .default))
         present(alert, animated: true)
     }
 }
 
-extension HomeViewController: UITableViewDelegate, UITableViewDataSource {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+extension HomeViewController: UICollectionViewDelegate, UICollectionViewDataSource {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         presenter.pokemons.count
     }
 
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let pokemon = presenter.pokemons[indexPath.row]
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: "PokemonCell", for: indexPath) as? PokemonCell else {
-            return UITableViewCell()
+        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "PokemonGridCell", for: indexPath) as? PokemonGridCell else {
+            return UICollectionViewCell()
         }
-        cell.configure(with: pokemon.name, isFavorite: presenter.isFavorite(pokemon)) { [weak self] in
+        cell.configure(name: pokemon.name, isFavorite: presenter.isFavorite(pokemon)) { [weak self] in
             self?.presenter.toggleFavorite(for: pokemon)
         }
         return cell
     }
 
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        collectionView.deselectItem(at: indexPath, animated: true)
         let pokemon = presenter.pokemons[indexPath.row]
         presenter.didSelectPokemon(pokemon)
     }
     
-    func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+    func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
         guard presenter.isShowingFavorites == false else { return }
         if indexPath.row == presenter.pokemons.count - 1 {
             footerSpinner.startAnimating()
@@ -143,5 +153,42 @@ extension HomeViewController: UISearchResultsUpdating {
     func updateSearchResults(for searchController: UISearchController) {
         guard let query = searchController.searchBar.text?.lowercased() else { return }
         presenter.filterPokemons(query: query)
+    }
+}
+
+final class PokemonGridCell: UICollectionViewCell {
+    private let nameLabel = UILabel()
+    private let favoriteButton = UIButton(type: .system)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        contentView.backgroundColor = .systemGray6
+        contentView.layer.cornerRadius = 12
+
+        nameLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        nameLabel.textAlignment = .center
+
+        favoriteButton.setTitle("★", for: .normal)
+        favoriteButton.setTitleColor(.systemYellow, for: .normal)
+
+        let stack = UIStackView(arrangedSubviews: [nameLabel, favoriteButton])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        contentView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(name: String, isFavorite: Bool, onFavorite: @escaping () -> Void) {
+        nameLabel.text = name.capitalized
+        favoriteButton.setTitle(isFavorite ? "★" : "☆", for: .normal)
+        favoriteButton.addAction(UIAction { _ in onFavorite() }, for: .touchUpInside)
     }
 }
