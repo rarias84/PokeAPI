@@ -4,9 +4,9 @@ import SwiftUI
 final class PokemonListViewModel: ObservableObject {
     @Published var pokemons: [PokemonListItem] = []
     @Published var isLoading = false
-    @Published private(set) var favorites: Set<String> = []
+    @Published private(set) var favorites: Set<Int> = []
 
-    private let repository: PokemonRepositoryProtocol
+    let repository: PokemonRepositoryProtocol
     private var offset = 0
     private let limit = 20
     private var canLoadMore = true
@@ -51,7 +51,7 @@ final class PokemonListViewModel: ObservableObject {
     }
 
     func isFavorite(_ pokemon: PokemonListItem) -> Bool {
-        favorites.contains(pokemon.name)
+        favorites.contains(pokemon.id)
     }
 
     func toggleFavorite(_ pokemon: PokemonListItem) async {
@@ -64,7 +64,6 @@ final class PokemonListViewModel: ObservableObject {
     }
 
     func loadFavorites() async {
-        let favs = await repository.allFavorites()
-        favorites = Set(favs.map { $0.name })
+        favorites = await repository.favoriteIDs()
     }
 }

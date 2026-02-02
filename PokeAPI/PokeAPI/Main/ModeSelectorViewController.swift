@@ -8,7 +8,7 @@ final class ModeSelectorViewController: UIViewController {
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Logout", style: .plain, target: self, action: #selector(logout))
         
         let swiftUIButton = UIButton(type: .system)
-        swiftUIButton.setTitle("SwiftUI MVVM", for: .normal)
+        swiftUIButton.setTitle("SwiftUI MVVM (No completo)", for: .normal)
         swiftUIButton.addTarget(self, action: #selector(openSwiftUI), for: .touchUpInside)
         
         let uiKitButton = UIButton(type: .system)

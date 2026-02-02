@@ -1,12 +1,6 @@
 import UIKit
 
 @MainActor
-protocol HomeViewControllerProtocol: AnyObject {
-    func reloadData()
-    func showError(_ message: String)
-}
-
-@MainActor
 final class HomeViewController: UIViewController {
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
@@ -36,6 +30,7 @@ final class HomeViewController: UIViewController {
     }()
 
     private var presenter: HomePresenterProtocol
+    private let navDelegate = HomeNavigationDelegate()
     
     init(presenter: HomePresenterProtocol) {
         self.presenter = presenter
@@ -49,13 +44,14 @@ final class HomeViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        navigationController?.delegate = navDelegate
 
         presenter.loadNextPage()
     }
 
     private func setupUI() {
         title = "Pokémon"
-        view.backgroundColor = .white
+        view.backgroundColor = .red
 
         segmentControl.selectedSegmentIndex = 0
         segmentControl.addTarget(self, action: #selector(didChangeSegment), for: .valueChanged)
@@ -77,8 +73,8 @@ final class HomeViewController: UIViewController {
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8)
         ])
     }
 
@@ -109,6 +105,18 @@ extension HomeViewController: HomeViewControllerProtocol {
         refreshControl.endRefreshing()
         footerSpinner.stopAnimating()
     }
+    
+    func reloadItem(at index: Int) {
+        let indexPath = IndexPath(item: index, section: 0)
+        collectionView.reloadItems(at: [indexPath])
+    }
+
+    func deleteItem(at index: Int) {
+        let indexPath = IndexPath(item: index, section: 0)
+        collectionView.performBatchUpdates {
+            collectionView.deleteItems(at: [indexPath])
+        }
+    }
 
     func showError(_ message: String) {
         collectionView.refreshControl?.endRefreshing()
@@ -128,20 +136,26 @@ extension HomeViewController: UICollectionViewDelegate, UICollectionViewDataSour
         guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "PokemonGridCell", for: indexPath) as? PokemonGridCell else {
             return UICollectionViewCell()
         }
-        cell.configure(name: pokemon.name, isFavorite: presenter.isFavorite(pokemon)) { [weak self] in
+        cell.configure(with: pokemon, isFavorite: presenter.isFavorite(pokemon)) { [weak self] in
             self?.presenter.toggleFavorite(for: pokemon)
         }
         return cell
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        collectionView.deselectItem(at: indexPath, animated: true)
-        let pokemon = presenter.pokemons[indexPath.row]
-        presenter.didSelectPokemon(pokemon)
+        guard let cell = collectionView.cellForItem(at: indexPath) else {
+            return
+        }
+
+        let frameInWindow = cell.convert(cell.bounds, to: nil)
+        navDelegate.selectedCellFrame = frameInWindow
+        presenter.didSelectPokemon(at: indexPath.row)
     }
     
     func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
-        guard presenter.isShowingFavorites == false else { return }
+        guard presenter.isShowingFavorites == false else {
+            return
+        }
         if indexPath.row == presenter.pokemons.count - 1 {
             footerSpinner.startAnimating()
             presenter.loadNextPage()
@@ -151,44 +165,7 @@ extension HomeViewController: UICollectionViewDelegate, UICollectionViewDataSour
 
 extension HomeViewController: UISearchResultsUpdating {
     func updateSearchResults(for searchController: UISearchController) {
-        guard let query = searchController.searchBar.text?.lowercased() else { return }
+        let query = searchController.searchBar.text ?? ""
         presenter.filterPokemons(query: query)
-    }
-}
-
-final class PokemonGridCell: UICollectionViewCell {
-    private let nameLabel = UILabel()
-    private let favoriteButton = UIButton(type: .system)
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        contentView.backgroundColor = .systemGray6
-        contentView.layer.cornerRadius = 12
-
-        nameLabel.font = .systemFont(ofSize: 14, weight: .medium)
-        nameLabel.textAlignment = .center
-
-        favoriteButton.setTitle("★", for: .normal)
-        favoriteButton.setTitleColor(.systemYellow, for: .normal)
-
-        let stack = UIStackView(arrangedSubviews: [nameLabel, favoriteButton])
-        stack.axis = .vertical
-        stack.alignment = .center
-        stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        contentView.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
-        ])
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    func configure(name: String, isFavorite: Bool, onFavorite: @escaping () -> Void) {
-        nameLabel.text = name.capitalized
-        favoriteButton.setTitle(isFavorite ? "★" : "☆", for: .normal)
-        favoriteButton.addAction(UIAction { _ in onFavorite() }, for: .touchUpInside)
     }
 }

@@ -1,12 +1,5 @@
 import Foundation
 
-protocol HomeInteractorProtocol {
-    func loadNextPage() async
-    func refresh() async
-    func toggleFavorite(_ pokemon: PokemonListItem) async
-    func getFavorites() async -> [PokemonListItem]
-}
-
 final class HomeInteractor: HomeInteractorProtocol {
     weak var presenter: HomeInteractorOutput?
     private let repository: PokemonRepositoryProtocol
@@ -21,7 +14,10 @@ final class HomeInteractor: HomeInteractorProtocol {
     }
 
     func loadNextPage() async {
-        guard canLoadMore else { return }
+        guard canLoadMore else {
+            return
+        }
+        
         do {
             let pokemons = try await repository.fetchPokemonPage(offset: offset, limit: limit)
             offset += limit
@@ -45,14 +41,16 @@ final class HomeInteractor: HomeInteractorProtocol {
     }
 
     func toggleFavorite(_ pokemon: PokemonListItem) async {
+        guard pokemon.id > 0 else { return }
+
         if await repository.isFavorite(pokemon) {
             await repository.removeFavorite(pokemon)
         } else {
             await repository.addFavorite(pokemon)
         }
     }
-
-    func getFavorites() async -> [PokemonListItem] {
-        await repository.allFavorites()
+    
+    func getFavoriteIDs() async -> Set<Int> {
+        await repository.favoriteIDs()
     }
 }

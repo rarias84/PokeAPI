@@ -1,46 +1,47 @@
 import Foundation
 
-// MARK: - FavoritesManager
 actor FavoritesManager {
     private let defaults: UserDefaults
-    private let key = "favorite_pokemons"
+    private let key = "favorite_pokemon_ids"
 
     init(userDefaults: UserDefaults = .standard) {
         self.defaults = userDefaults
     }
 
-    func add(_ pokemon: PokemonListItem) async {
-        var names = favoriteNames()
-        if !names.contains(pokemon.name) {
-            names.append(pokemon.name)
-            save(names: names)
-        }
+    func add(id: Int) async {
+        var ids = loadIDs()
+        ids.insert(id)
+        save(ids)
     }
 
-    func remove(_ pokemon: PokemonListItem) async {
-        var names = favoriteNames()
-        if let idx = names.firstIndex(of: pokemon.name) {
-            names.remove(at: idx)
-            save(names: names)
-        }
+    func remove(id: Int) async {
+        var ids = loadIDs()
+        ids.remove(id)
+        save(ids)
     }
 
-    func isFavorite(_ pokemon: PokemonListItem) async -> Bool {
-        favoriteNames().contains(pokemon.name)
+    func isFavorite(id: Int) async -> Bool {
+        loadIDs().contains(id)
     }
 
-    func allFavorites() async -> [PokemonListItem] {
-        favoriteNames().map { PokemonListItem(name: $0, url: nil) }
+    func allIDs() async -> Set<Int> {
+        loadIDs()
     }
 }
 
-// MARK: - Helpers
+// MARK: - helpers
 private extension FavoritesManager {
-    func favoriteNames() -> [String] {
-        defaults.stringArray(forKey: key) ?? []
+    func loadIDs() -> Set<Int> {
+        guard let data = defaults.data(forKey: key), let ids = try? JSONDecoder().decode(Set<Int>.self, from: data) else {
+            return []
+        }
+        return ids
     }
 
-    func save(names: [String]) {
-        defaults.set(names, forKey: key)
+    func save(_ ids: Set<Int>) {
+        guard let data = try? JSONEncoder().encode(ids) else {
+            return
+        }
+        defaults.set(data, forKey: key)
     }
 }

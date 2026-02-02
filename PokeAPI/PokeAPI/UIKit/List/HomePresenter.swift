@@ -1,25 +1,4 @@
 @MainActor
-protocol HomeInteractorOutput: AnyObject {
-    func didFetchPokemons(_ pokemons: [PokemonListItem])
-    func didFailWithError(_ error: Error)
-}
-
-@MainActor
-protocol HomePresenterProtocol: AnyObject {
-    var pokemons: [PokemonListItem] { get }
-    var isShowingFavorites: Bool { get }
-
-    func filterPokemons(query: String)
-    func loadNextPage()
-    func didSelectPokemon(_ pokemon: PokemonListItem)
-    func refresh()
-    func showFavorites()
-    func showAllPokemons()
-    func toggleFavorite(for pokemon: PokemonListItem)
-    func isFavorite(_ pokemon: PokemonListItem) -> Bool
-}
-
-@MainActor
 final class HomePresenter {
     weak var view: HomeViewControllerProtocol?
     private let interactor: HomeInteractorProtocol
@@ -28,8 +7,9 @@ final class HomePresenter {
     private(set) var pokemons: [PokemonListItem] = []
     private var allPokemons: [PokemonListItem] = []
     private var showingFavorites = false
-    private var favoriteNames: Set<String> = []
+    private var favoriteIDs: Set<Int> = []
 
+    private var currentSearchQuery: String = ""
     var isShowingFavorites: Bool { showingFavorites }
 
     init(interactor: HomeInteractorProtocol, router: HomeRouter) {
@@ -38,15 +18,35 @@ final class HomePresenter {
     }
 
     private func syncFavorites() async {
-        let favorites = await interactor.getFavorites()
-        favoriteNames = Set(favorites.map { $0.name })
+        favoriteIDs = await interactor.getFavoriteIDs()
+    }
+    
+    private func applyFilters() {
+        var list = allPokemons
+
+        if showingFavorites {
+            list = list.filter { favoriteIDs.contains($0.id) }
+        }
+
+        if !currentSearchQuery.isEmpty {
+            list = list.filter { $0.name.lowercased().contains(currentSearchQuery.lowercased()) }
+        }
+
+        pokemons = list
+    }
+
+    private func rebuildVisibleList() {
+        if showingFavorites {
+            pokemons = allPokemons.filter { favoriteIDs.contains($0.id) }
+        } else {
+            pokemons = allPokemons
+        }
     }
 }
 
 extension HomePresenter: HomePresenterProtocol {
     func loadNextPage() {
         Task {
-            await syncFavorites()
             await interactor.loadNextPage()
         }
     }
@@ -61,16 +61,16 @@ extension HomePresenter: HomePresenterProtocol {
         }
     }
 
-    func didSelectPokemon(_ pokemon: PokemonListItem) {
-        router.navigateToDetail(pokemon: pokemon)
+    func didSelectPokemon(at index: Int) {
+        router.navigateToDetail(
+            pokemons: pokemons,
+            selectedIndex: index
+        )
     }
 
     func filterPokemons(query: String) {
-        if query.isEmpty {
-            pokemons = allPokemons
-        } else {
-            pokemons = allPokemons.filter { $0.name.lowercased().contains(query) }
-        }
+        currentSearchQuery = query
+        applyFilters()
         view?.reloadData()
     }
 
@@ -78,7 +78,7 @@ extension HomePresenter: HomePresenterProtocol {
         showingFavorites = false
         Task {
             await syncFavorites()
-            pokemons = allPokemons
+            applyFilters()
             view?.reloadData()
         }
     }
@@ -86,38 +86,43 @@ extension HomePresenter: HomePresenterProtocol {
     func showFavorites() {
         showingFavorites = true
         Task {
-            let favorites = await interactor.getFavorites()
-            pokemons = favorites
-            favoriteNames = Set(favorites.map { $0.name })
+            await syncFavorites()
+            applyFilters()
             view?.reloadData()
         }
     }
 
     func isFavorite(_ pokemon: PokemonListItem) -> Bool {
-        favoriteNames.contains(pokemon.name)
+        favoriteIDs.contains(pokemon.id)
     }
     
     func toggleFavorite(for pokemon: PokemonListItem) {
         Task {
             await interactor.toggleFavorite(pokemon)
-            let favorites = await interactor.getFavorites()
-            favoriteNames = Set(favorites.map { $0.name })
+            favoriteIDs = await interactor.getFavoriteIDs()
 
             if showingFavorites {
-                pokemons = favorites
+                if let index = pokemons.firstIndex(where: { $0.id == pokemon.id }) {
+                    pokemons.remove(at: index)
+                    view?.deleteItem(at: index)
+                }
             } else {
-                pokemons = allPokemons
+                if let index = pokemons.firstIndex(where: { $0.id == pokemon.id }) {
+                    view?.reloadItem(at: index)
+                }
             }
-            view?.reloadData()
         }
     }
 }
 
 extension HomePresenter: HomeInteractorOutput {
     func didFetchPokemons(_ pokemons: [PokemonListItem]) {
-        allPokemons.append(contentsOf: pokemons)
-        if !showingFavorites {
-            self.pokemons = allPokemons
+        Task {
+            await syncFavorites()
+
+            allPokemons.append(contentsOf: pokemons)
+            applyFilters()
+
             view?.reloadData()
         }
     }

@@ -15,6 +15,10 @@ enum PokemonAPI {
     static func pokemonDetail(name: String) -> URL {
         baseURL.appendingPathComponent("pokemon/\(name)")
     }
+    
+    static func pokemonSpecies(name: String) -> URL {
+        baseURL.appendingPathComponent("pokemon-species/\(name)")
+    }
 }
 
 private extension URL {
